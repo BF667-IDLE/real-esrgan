@@ -41,18 +41,18 @@ class RealESRGAN:
             assert self.scale in [2,4,8], 'You can download models only with scales: 2, 4, 8'
             config = HF_MODELS[self.scale]
             cache_dir = os.path.dirname(model_path)
-            local_filename = os.path.basename(model_path)
-            
+            local_dir = os.path.dirname(model_path)
+
             # Use hf_hub_download directly instead of hf_hub_url + cached_download
             model_path = hf_hub_download(
                 repo_id=config['repo_id'],
                 filename=config['filename'],
                 cache_dir=cache_dir,
-                force_filename=local_filename
+                local_dir=local_dir
             )
             print('Weights downloaded to:', model_path)
         
-        loadnet = torch.load(model_path)
+        loadnet = torch.load(model_path, weights_only=True)
         if 'params' in loadnet:
             self.model.load_state_dict(loadnet['params'], strict=True)
         elif 'params_ema' in loadnet:
@@ -62,7 +62,7 @@ class RealESRGAN:
         self.model.eval()
         self.model.to(self.device)
         
-    @torch.cuda.amp.autocast()
+    @torch.amp.autocast('cuda')
     def predict(self, lr_image, batch_size=4, patches_size=192,
                 padding=24, pad_size=15):
         scale = self.scale
