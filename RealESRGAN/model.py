@@ -5,6 +5,7 @@ from PIL import Image
 import numpy as np
 import cv2
 from huggingface_hub import hf_hub_download
+from tqdm import tqdm
 
 from .rrdbnet_arch import RRDBNet
 from .utils import pad_reflect, split_image_into_overlapping_patches, stich_together, \
@@ -70,16 +71,32 @@ class RealESRGAN:
         lr_image = np.array(lr_image)
         lr_image = pad_reflect(lr_image, pad_size)
 
+        print("Splitting image into overlapping patches...")
         patches, p_shape = split_image_into_overlapping_patches(
             lr_image, patch_size=patches_size, padding_size=padding
         )
+        
+        print(f"Processing {len(patches)} patches...")
         img = torch.FloatTensor(patches/255).permute((0,3,1,2)).to(device).detach()
 
         with torch.no_grad():
-            res = self.model(img[0:batch_size])
-            for i in range(batch_size, img.shape[0], batch_size):
-                res = torch.cat((res, self.model(img[i:i+batch_size])), 0)
+            # Initialize progress bar for batch processing
+            num_batches = (img.shape[0] + batch_size - 1) // batch_size
+            res = None
+            
+            with tqdm(total=num_batches, desc="Processing patches", unit="batch") as pbar:
+                for i in range(0, img.shape[0], batch_size):
+                    batch = img[i:i+batch_size]
+                    output = self.model(batch)
+                    
+                    if res is None:
+                        res = output
+                    else:
+                        res = torch.cat((res, output), 0)
+                    
+                    pbar.update(1)
 
+        print("Stitching patches back together...")
         sr_image = res.permute((0,2,3,1)).clamp_(0, 1).cpu()
         np_sr_image = sr_image.numpy()
 
